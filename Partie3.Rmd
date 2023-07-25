@@ -1,0 +1,98 @@
+---
+title: "Partie 3"
+author: "DIAKITE Moussa"
+output: word_document
+---
+
+
+##### Debut du code
+
+```{r}
+
+
+#------------------------------------------------------------
+library(sp)
+library(ggplot2)
+library(dplyr)
+library(rnaturalearth)
+library(leaflet)
+library(shiny)
+library(plotly)
+#-----------------------------------------------------------------
+# Chargement des packages necessaires
+#----------------------------------------------------------------
+
+
+
+
+base_donnee <- read.csv("ACLED-Western_Africa.csv")
+# chargement de la base de donnée 
+
+test = subset(base_donnee, pays=="Mali" & type=="Protests" & annee=="2022")
+# Création d'un dataframe pour les marqueurs
+
+
+# Partie création de l'interface utilisateur
+
+ui <- fluidPage(
+  
+  # titre de l'application
+  titlePanel("CARTE SHINY"),
+  
+  # Sidebar with a slider input for number of bins 
+  sidebarLayout(
+    sidebarPanel(
+      selectInput(
+        inputId="pays",
+        label="CHOISIR UN PAYS",
+        choices=c(unique(base_donnee$pays)),
+        selected = c(unique(base_donnee$pays))[sample(1:length(unique(base_donnee$pays)),1)],
+        multiple = TRUE
+      ),
+      selectInput(
+        inputId="evenement",
+        label="CHOISIR DES EVENEMENTS",
+        choices=c(unique(base_donnee$type)),
+        selected = "Protests",
+        multiple = TRUE
+      ),
+      selectInput(
+        inputId="annee",
+        label="ANNEE DE REALISATION",
+        choices=c(unique(base_donnee$annee)),
+        selected = "2022",
+        multiple = TRUE
+      )
+    ),
+    
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotlyOutput(outputId="map",
+                   width = "100%",
+                   height = "720px")
+    )
+  )
+)
+
+
+# Partie concernant le serveur
+
+server <- function(input, output, session) {
+  output$map <- renderPlotly({
+    gg <- ggplot() +
+      geom_polygon(data = ne_countries(type = "countries",country = c(input$pays)), aes(x = long, y = lat, group = group),
+                   fill = "lightblue", color = "gray", alpha = 0.6) +
+      #geom_point(data = base, aes(x = longitude, y = latitude),
+      #size = 3, alpha = 0.7) +
+      theme_void() +
+      labs(title = "Carte de l'Afrique de l'Ouest", x = "", y = "") +
+      theme(legend.position = "bottom")
+    
+    ggplotly(gg)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+```
+

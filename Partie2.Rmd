@@ -1,0 +1,198 @@
+---
+title: "Partie 2"
+author: "DIAKITE Moussa"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+#-------------------------------------------------------------
+#                  NETTOYAGE ET GESTION DES DONNEES
+#-------------------------------------------------------------
+
+library(readxl)
+library(tidyverse)
+
+# chargement des packages nécessaires
+
+
+data <- read_excel("Base_Partie 2.xlsx", sheet = 1)
+# importer la base
+
+head(data)
+# lecture des premières lignes
+
+data <- data %>%
+  rename(destination = country_destination) %>%
+  mutate(destination = ifelse(destination < 0, NA, destination))
+# renom de country_destination en destination
+# definition des valeurs negatives en valeur manquante
+
+
+# Créer une nouvelle variable contenant des tranches d’âge de 5 ans en utilisant la variable “age”
+data <- data %>%
+  mutate(age_group = cut(age, breaks = seq(0, 100, 5), labels = FALSE, include.lowest = TRUE))
+# Création des tranches d'âge de 5ans pour la variable âge
+
+data <- data %>%
+  group_by(id) %>%
+  mutate(nombre_interviews = n())
+# création de variable contenant le nombre d'interview par agent
+
+
+# Avant l'application de sample(), on vérifie la taille de chaque groupe
+group_sizes <- data %>%
+  group_by(id) %>%
+  summarize(group_size = n())
+
+print(group_sizes)
+
+
+set.seed(42) 
+# Réproduction des mêmes résultats aléatoires
+data <- data %>%
+  mutate(group_assignment = sample(0:1, n(), replace = TRUE))
+# Créer une nouvelle variable qui affecte aléatoirement chaque répondant à un groupe de traitement (1) ou de controle (0).
+
+
+
+district_population <- read_excel("Base_Partie 2.xlsx", sheet = 2)
+
+# Chargement des données de la feuille 2
+# La base contient la taille de la population de chaque district
+
+head(district_population)
+colnames(data)
+colnames(district_population)
+
+#data <- left_join(data, district_population, by = c("endline_district" = "district"))
+data <- left_join(data, district_population, by = "district")
+# Fusion de la feuille 2 avec la feuille 1
+
+
+data <- data %>%
+  mutate(duree = endtime - starttime) %>%
+  group_by(id) %>%
+  mutate(moy_duree = mean(duree, na.rm = TRUE))
+# Calcule de la durée de l’entretien 
+# Calcule de la durée moyenne de l’entretien par enquêteur
+
+
+names(data) <- lapply(names(data), function(x) paste("endline_", x, sep = ""))
+# renomçage des variables par une boucle
+
+names(data)
+# affichage des données après renom.
+
+
+#---------------------------------------------------------------
+#               ANALYSE ET VISUALISATION DES DONNEES
+#---------------------------------------------------------------
+
+
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(gt)
+library(stargazer)
+
+# chargement des packages nécessaires
+
+
+
+names(data)
+
+tableau_recap <- data %>%
+  group_by(endline_district) %>%
+  summarise(age_moyen = mean(endline_age, na.rm = TRUE),
+            enfants_moyen = mean(endline_children_num, na.rm = TRUE))
+# tableau recapitulatif de l'âge moyen 
+# et du nombre d'enfant moyen par district
+
+
+
+# nous allons effectuer un test de student 
+test_age_sex <- t.test(endline_age ~ endline_sex, data = data)
+
+# Obtenir la valeur p du test
+p_value <- test_age_sex$p.value
+
+if (p_value < 0.05) {
+  message("La différence d'âge entre les sexes est statistiquement significative.")
+} else {
+  message("Il n'y a pas de différence d'âge statistiquement significative entre les sexes.")
+}
+
+
+# Filtrer les données pour exclure les âges au-delà de 100 ans
+data_filtered <- data %>%
+  filter(endline_age <= 100)
+
+# Créer le nuage de points en utilisant les données filtrées
+ggplot(data_filtered, aes(x = endline_age, y = endline_children_num)) +
+  geom_point(position = position_jitter(width = 0.2), color = "blue", size = 3, alpha = 0.7) +
+  labs(x = "Âge", y = "Nombre d'enfants", title = "Nuage de points : Âge vs Nombre d'enfants") +
+  theme_minimal()
+
+graphique <- ggplot(data_filtered, aes(x = endline_age, y = endline_children_num)) +
+  geom_point(position = position_jitter(width = 0.2), color = "blue", size = 3, alpha = 0.7) +
+  labs(x = "Âge", y = "Nombre d'enfants", title = "Nuage de points : Âge vs Nombre d'enfants") +
+  theme_minimal()
+
+graphique
+#ggplot(data, aes(x = age, y = children_num)) +
+#geom_point(position = position_jitter(width = 0.2), color = "blue", size = 3, alpha = 0.7) +
+#labs(x = "Âge", y = "Nombre d'enfants", title = "Nuage de points : Âge vs Nombre d'enfants") +
+#theme_minimal()
+
+# Création du groupe de traitement et celui du controle
+
+# Calculer la moyenne de la variable "intention"
+mean_intention <- mean(data$endline_intention)
+print(mean_intention)
+# Créer les variables "groupe_traitement" et "groupe_controle"
+data$groupe_traitement <- ifelse(data$endline_intention > mean_intention, 1, 0)
+data$groupe_controle <- ifelse(data$endline_intention <= mean_intention, 1, 0)
+
+
+modele_intention <- lm(endline_intention ~ groupe_traitement, data = data)
+summary(modele_intention)
+
+
+# Fonction pour extraire les coefficients et erreurs standard en gérant les cas où le modèle n'a pas de coefficient spécifique
+get_coefficients <- function(model) {
+  coefficients <- tryCatch(coef(model), error = function(e) rep(NA, length(coef(model))))
+  std_errors <- tryCatch(summary(model)$coefficients[, "Std. Error"], error = function(e) rep(NA, length(coef(model))))
+  return(list(coefficients, std_errors))
+}
+
+modele_A <- lm(endline_intention ~ groupe_traitement, data = data)
+modele_B <- lm(endline_intention ~ groupe_traitement + endline_age + endline_sex, data = data)
+modele_C <- lm(endline_intention ~ groupe_traitement + endline_age + endline_sex + endline_district, data = data)
+
+# Extraire les coefficients et erreurs standard pour chaque modèle
+coefficients_A <- get_coefficients(modele_A)
+coefficients_B <- get_coefficients(modele_B)
+coefficients_C <- get_coefficients(modele_C)
+
+
+
+
+# Créer le tableau de régression en utilisant data.frame avec des vecteurs de même longueur
+
+#tableau_regression <- data.frame(
+ # Modèle = c("Modèle A", "Modèle B", "Modèle C"),
+  #Estimateur = unlist(get_coefficients(modele_A)[1], get_coefficients(modele_B)[1], get_coefficients(modele_C)[1]),
+  #Erreur_standard = unlist(get_coefficients(modele_A)[2], get_coefficients(modele_B)[2], get_coefficients(modele_C)[2]),
+  #P_value = c(summary(modele_A)$coefficients[, "Pr(>|t|)"],
+             # summary(modele_B)$coefficients[1, "Pr(>|t|)"],
+              #summary(modele_C)$coefficients[1, "Pr(>|t|)"])
+#)
+
+#tableau_regression
+```
+
